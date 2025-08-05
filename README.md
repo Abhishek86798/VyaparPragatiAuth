@@ -1,11 +1,11 @@
 # Vyapar Pragati Admin Dashboard
 
-A modern admin dashboard for user management with OTP-based authentication for user deletion.
+A modern admin dashboard for user management with Firebase Phone Authentication for secure user deletion.
 
 ## 🚀 Features
 
 - **User Management**: View, manage, and delete users
-- **OTP Authentication**: Secure user deletion with SMS OTP verification
+- **Firebase Phone Authentication**: Secure OTP verification using Firebase's built-in phone auth
 - **Firebase Integration**: Real-time data with Firestore
 - **Responsive Design**: Modern UI with Tailwind CSS
 - **TypeScript**: Full type safety
@@ -132,14 +132,14 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
 
 ## 🧪 Testing
 
-### OTP Verification Flow
+### Firebase Auth Verification Flow
 
 1. **Open the dashboard** at `http://localhost:3000`
 2. **Click "Delete"** on any user
-3. **Enter test phone**: `+919307229712`
-4. **Click "Send"** - OTP will be sent
-5. **Enter OTP**: `654321` (test code)
-6. **Confirm deletion** - User will be deleted
+3. **Enter admin phone number**: `+919307229712`
+4. **Click "Send"** - Firebase sends OTP via SMS
+5. **Enter OTP**: `654321` (test code for test phones)
+6. **Confirm deletion** - User will be deleted after verification
 
 ### Test Phone Numbers
 
@@ -161,9 +161,8 @@ Use these test numbers for OTP verification:
 │   └── UserTable.tsx
 ├── lib/                   # Utility libraries
 │   ├── firebase.ts        # Firebase config
-│   ├── userService.ts     # User operations
-│   ├── adminService.ts    # Admin operations
-│   └── smsService.ts      # SMS operations
+│   ├── firebaseAuthService.ts # Firebase Auth service
+│   └── userService.ts     # User operations
 ├── scripts/               # Utility scripts
 │   └── add-dummy-users.js
 ├── types/                 # TypeScript types

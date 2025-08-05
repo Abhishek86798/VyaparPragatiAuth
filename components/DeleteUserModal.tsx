@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DeleteUserModalProps } from '@/types/user';
-import { X, AlertTriangle, Shield, Key, Phone, Send, Download } from 'lucide-react';
-import { AdminService } from '@/lib/adminService';
-import { SMSService } from '@/lib/smsService';
+import { X, AlertTriangle, Shield, Key, Phone, Send } from 'lucide-react';
+import { FirebaseAuthService } from '@/lib/firebaseAuthService';
 import toast from 'react-hot-toast';
 
 const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
@@ -18,10 +17,9 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [sendingOTP, setSendingOTP] = useState(false);
-  const [fetchingOTP, setFetchingOTP] = useState(false);
   const [error, setError] = useState('');
-  const [useRealSMS, setUseRealSMS] = useState(true); // Default to real SMS
-  const [generatedOTP, setGeneratedOTP] = useState(''); // Store the generated OTP for mock system
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen && user) {
@@ -29,9 +27,24 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
       setOtpSent(false);
       setError('');
       setAdminPhone('');
-      setGeneratedOTP(''); // Reset generated OTP
+      setConfirmationResult(null);
+      
+      // Initialize reCAPTCHA when modal opens
+      if (recaptchaContainerRef.current) {
+        initializeRecaptcha();
+      }
     }
   }, [isOpen, user]);
+
+  const initializeRecaptcha = async () => {
+    try {
+      await FirebaseAuthService.initializeRecaptcha('recaptcha-container');
+      console.log('✅ reCAPTCHA initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize reCAPTCHA:', error);
+      setError('Failed to initialize security verification. Please refresh and try again.');
+    }
+  };
 
   const handleSendOTP = async () => {
     if (!adminPhone.trim()) {
@@ -45,102 +58,31 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
       setSendingOTP(true);
       setError('');
       
-      if (useRealSMS) {
-        // Use real SMS via API route
-        console.log(`📱 Using REAL SMS API for: ${adminPhone}`);
+      console.log(`📱 Sending OTP via Firebase Auth to: ${adminPhone}`);
+      
+      const response = await FirebaseAuthService.sendOTP(adminPhone);
+      
+      if (response.success && response.confirmationResult) {
+        setConfirmationResult(response.confirmationResult);
+        setOtpSent(true);
         
-        const smsResponse = await SMSService.sendOTP(adminPhone);
-        
-        if (smsResponse.success) {
-          setOtpSent(true);
-          
-          if (smsResponse.isTestPhone) {
-            // Don't auto-fill, let user enter manually
-            toast.success(`SMS sent to test phone: ${adminPhone}`);
-            console.log(`✅ Real SMS sent to test phone: ${adminPhone}`);
-            console.log(`🎯 Use test code: ${smsResponse.testCode || '654321'}`);
-          } else {
-            toast.success(`SMS sent to: ${adminPhone}`);
-            console.log(`✅ Real SMS sent to: ${adminPhone}`);
-          }
+        if (response.isTestPhone) {
+          toast.success(`OTP sent to test phone: ${adminPhone}`);
+          console.log(`✅ Firebase Auth OTP sent to test phone: ${adminPhone}`);
+          console.log(`🎯 Use test code: 654321 for verification`);
         } else {
-          setError(smsResponse.error || 'Failed to send SMS');
+          toast.success(`OTP sent to: ${adminPhone}`);
+          console.log(`✅ Firebase Auth OTP sent to: ${adminPhone}`);
         }
       } else {
-        // Use mock system (for testing)
-        console.log(`📱 Using MOCK system for: ${adminPhone}`);
-        
-        // Generate OTP immediately for testing
-        const newGeneratedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-        setGeneratedOTP(newGeneratedOTP); // Store the generated OTP
-        
-        // Store in Firebase for consistency
-        try {
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Request timeout')), 5000)
-          );
-
-          const sendOTPPromise = AdminService.sendOTPToUser(user.id, adminPhone);
-          await Promise.race([sendOTPPromise, timeoutPromise]);
-        } catch (firebaseError) {
-          console.warn('Firebase storage failed, but continuing with mock OTP');
-        }
-        
-        // Don't auto-fill, let user enter manually
-        setOtpSent(true);
-        toast.success(`Mock OTP generated: ${newGeneratedOTP}`);
-        console.log(`📱 Mock OTP generated for admin ${adminPhone}: ${newGeneratedOTP}`);
-        console.log(`🎯 Use this OTP: ${newGeneratedOTP}`);
+        setError(response.error || 'Failed to send OTP');
       }
       
     } catch (error) {
       console.error('Error sending OTP:', error);
       setError('Failed to send OTP. Please try again.');
-      
-      if (!useRealSMS) {
-        // Generate fallback OTP for testing
-        const fallbackOTP = Math.floor(100000 + Math.random() * 900000).toString();
-        setGeneratedOTP(fallbackOTP); // Store the fallback OTP
-        setOtpSent(true);
-        console.log(`🔄 Fallback OTP for admin ${adminPhone}: ${fallbackOTP}`);
-        console.log(`🎯 Use this fallback OTP: ${fallbackOTP}`);
-      }
     } finally {
       setSendingOTP(false);
-    }
-  };
-
-  const handleFetchOTP = async () => {
-    if (!adminPhone.trim()) {
-      setError('Please enter admin phone number');
-      return;
-    }
-
-    try {
-      setFetchingOTP(true);
-      setError('');
-      
-      console.log(`🔍 Fetching OTP from Firebase for: ${adminPhone}`);
-      
-      // Fetch OTP from Firebase (mock system)
-      const fetchedOTP = await AdminService.fetchOTPFromFirebase(adminPhone);
-      
-      if (fetchedOTP) {
-        setOtp(fetchedOTP);
-        setGeneratedOTP(fetchedOTP); // Store the fetched OTP
-        setOtpSent(true);
-        toast.success(`OTP fetched from Firebase: ${fetchedOTP}`);
-        console.log(`✅ OTP fetched from Firebase: ${fetchedOTP} for ${adminPhone}`);
-      } else {
-        setError('No OTP found in Firebase for this phone number');
-        console.log(`❌ No OTP found in Firebase for ${adminPhone}`);
-      }
-      
-    } catch (error) {
-      console.error('Error fetching OTP:', error);
-      setError('Failed to fetch OTP from Firebase');
-    } finally {
-      setFetchingOTP(false);
     }
   };
 
@@ -158,33 +100,23 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
       return;
     }
 
-    if (!user) return;
+    if (!user || !confirmationResult) {
+      setError('Please send OTP first');
+      return;
+    }
 
     try {
-      let isOTPValid = false;
-
-      if (useRealSMS) {
-        // Use real SMS verification
-        console.log(`🔍 Verifying OTP with REAL SMS: ${otp}`);
-        isOTPValid = await SMSService.verifyOTP(adminPhone, otp);
-      } else {
-        // Use mock system - ONLY accept the generated OTP
-        console.log(`🔍 Verifying OTP with MOCK system: ${otp}`);
-        console.log(`📋 Expected OTP: ${generatedOTP}, Received: ${otp}`);
-        
-        if (otp === generatedOTP && generatedOTP !== '') {
-          isOTPValid = true;
-          console.log(`✅ Mock OTP verification successful: ${otp}`);
-        } else {
-          console.log(`❌ Mock OTP verification failed: ${otp}`);
-          console.log(`📋 Expected: ${generatedOTP}, Received: ${otp}`);
-          isOTPValid = false;
-        }
-      }
+      console.log(`🔍 Verifying OTP with Firebase Auth: ${otp}`);
+      
+      const isOTPValid = await FirebaseAuthService.verifyOTP(confirmationResult, otp);
 
       if (isOTPValid) {
-        // If OTP is valid, proceed with user deletion
-        console.log(`✅ OTP verification successful, proceeding with user deletion`);
+        console.log(`✅ Firebase Auth OTP verification successful`);
+        
+        // Sign out after successful verification
+        await FirebaseAuthService.signOut();
+        
+        // Proceed with user deletion
         onConfirmDelete(otp);
       } else {
         setError('Invalid OTP. Please try again.');
@@ -200,7 +132,11 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
     setAdminPhone('');
     setOtpSent(false);
     setError('');
-    setGeneratedOTP(''); // Reset generated OTP
+    setConfirmationResult(null);
+    
+    // Clear reCAPTCHA
+    FirebaseAuthService.clearRecaptcha();
+    
     onClose();
   };
 
@@ -249,43 +185,18 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
             </div>
           </div>
 
-          {/* SMS Mode Toggle */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-yellow-800">SMS Mode:</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useRealSMS}
-                  onChange={(e) => setUseRealSMS(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                <span className="ml-3 text-sm font-medium text-gray-900">
-                  {useRealSMS ? 'Real SMS API' : 'Mock System'}
-                </span>
-              </label>
-            </div>
-            <p className="text-xs text-yellow-700 mt-1">
-              {useRealSMS 
-                ? 'Using real SMS via API route (test phones: +91 90219 47718, +91 93072 29712, +91 93074 73197)'
-                : 'Using mock system for testing (OTP shown in terminal)'
-              }
-            </p>
-          </div>
-
-          {/* OTP Authentication */}
+          {/* Firebase Auth Authentication */}
           <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
             <div className="flex items-center mb-2">
               <Shield className="h-5 w-5 text-blue-600 mr-2" />
-              <h4 className="text-sm font-medium text-blue-900">OTP Verification Required</h4>
+              <h4 className="text-sm font-medium text-blue-900">Firebase Auth Verification</h4>
             </div>
             <p className="text-sm text-blue-700 mb-3">
-              {useRealSMS 
-                ? 'Enter admin phone number and receive SMS OTP via API'
-                : 'Enter admin phone number and generate OTP for testing'
-              }
+              Enter admin phone number and receive OTP via Firebase Phone Authentication
             </p>
+            
+            {/* reCAPTCHA Container */}
+            <div id="recaptcha-container" ref={recaptchaContainerRef} className="mb-3"></div>
             
             <form onSubmit={handleSubmit}>
               {/* Admin Phone Input */}
@@ -303,13 +214,13 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
                       onChange={(e) => setAdminPhone(e.target.value)}
                       className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                       placeholder="+91 93072 29712"
-                      disabled={loading || sendingOTP || fetchingOTP}
+                      disabled={loading || sendingOTP}
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSendOTP}
-                    disabled={!adminPhone.trim() || sendingOTP || loading || fetchingOTP}
+                    disabled={!adminPhone.trim() || sendingOTP || loading}
                     className="px-3 py-2 bg-blue-600 text-white border-l-0 border border-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                   >
                     {sendingOTP ? (
@@ -318,26 +229,9 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
                       <Send className="h-4 w-4" />
                     )}
                   </button>
-                  {!useRealSMS && (
-                    <button
-                      type="button"
-                      onClick={handleFetchOTP}
-                      disabled={!adminPhone.trim() || fetchingOTP || loading || sendingOTP}
-                      className="px-3 py-2 bg-green-600 text-white rounded-r-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                    >
-                      {fetchingOTP ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                    </button>
-                  )}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  {useRealSMS 
-                    ? 'Send: Use SMS API | Test phones: +91 90219 47718, +91 93072 29712, +91 93074 73197'
-                    : 'Send: Generate OTP | Fetch: Get OTP from Firebase'
-                  }
+                  Test phones: +91 90219 47718, +91 93072 29712, +91 93074 73197 (use code: 654321)
                 </p>
               </div>
 
@@ -345,7 +239,7 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
               {otpSent && (
                 <div className="mb-3">
                   <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-1">
-                    Enter OTP {useRealSMS ? '(from SMS)' : '(generated for testing)'}
+                    Enter OTP (from Firebase Auth)
                   </label>
                   <div className="flex items-center">
                     <Key className="h-4 w-4 text-gray-400 mr-2" />
@@ -361,10 +255,7 @@ const DeleteUserModal: React.FC<DeleteUserModalProps> = ({
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    {useRealSMS 
-                      ? 'Check your phone for the SMS (test phones use code: 654321)'
-                      : 'OTP is shown in terminal/console - enter it manually'
-                    }
+                    Check your phone for the SMS (test phones use code: 654321)
                   </p>
                 </div>
               )}
