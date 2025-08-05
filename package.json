@@ -1,0 +1,40 @@
+{
+  "name": "vyapar-pragati-admin-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf .next && rm -rf node_modules && pnpm install",
+    "docker:build": "docker build -t vyapar-pragati-admin .",
+    "docker:run": "docker run -d --name vyapar-pragati-admin -p 3000:3000 vyapar-pragati-admin",
+    "docker:stop": "docker stop vyapar-pragati-admin && docker rm vyapar-pragati-admin",
+    "deploy": "pnpm build && pnpm start"
+  },
+  "dependencies": {
+    "next": "14.0.0",
+    "react": "^18",
+    "react-dom": "^18",
+    "firebase": "^10.7.0",
+    "lucide-react": "^0.292.0",
+    "tailwindcss": "^3.3.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31",
+    "react-hot-toast": "^2.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+} 
